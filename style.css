@@ -1,0 +1,28 @@
+#vertices {
+  position: relative;
+  width: 800px;
+  height: 800px;
+  background: #acacac;
+  outline: 1px solid black;
+  margin: 0px;
+}
+
+.vertex {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background-color: red;
+  border-radius: 50%;
+}
+
+.images-container {
+  min-height: 80vh;
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+canvas {
+  border: 1px solid white;
+}
