@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Upload and Trace Outline</title>
+    <style>
+      #canvas {
+        border: 1px solid black;
+      }
+      #vertices {
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Upload Image and Trace Outline</h1>
+    <input type="file" id="upload" accept="image/*" /><br />
+    <label for="vertexCount">Number of vertices:</label>
+    <input type="number" id="vertexCount" value="10" min="2" /><br />
+    <button id="traceButton">Trace Outline</button>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <div id="vertices"></div>
+
+    <!-- Include OpenCV.js -->
+    <script
+      async
+      src="https://docs.opencv.org/master/opencv.js"
+      onload="onOpenCvReady();"
+      type="text/javascript"
+    ></script>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
