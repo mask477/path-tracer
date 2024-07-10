@@ -49,6 +49,8 @@ image.onload = () => {
   if (!isNaN(width) && !isNaN(height) && width > 0 && height > 0) {
     canvas.width = width;
     canvas.height = height;
+    canvas2.width = width;
+    canvas2.height = height;
 
     ctx.drawImage(image, 0, 0, width, height);
     traceButton.disabled = false;
@@ -61,7 +63,6 @@ widthInput.addEventListener('input', (e) => {
   const value = e.target.value;
 
   if (value > 0) {
-    canvas2.width = value * LED_SIZE;
     canvas3.width = value * LED_SIZE;
     drawSrgbCanvas();
   }
@@ -70,7 +71,6 @@ heightInput.addEventListener('input', (e) => {
   const value = e.target.value;
 
   if (value > 0) {
-    canvas2.height = value * LED_SIZE;
     canvas3.height = value * LED_SIZE;
     drawSrgbCanvas();
   }
