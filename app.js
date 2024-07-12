@@ -15,6 +15,8 @@ const widthInput = document.getElementById('width');
 const heightInput = document.getElementById('height');
 const traceButton = document.getElementById('traceButton');
 
+const maxDistanceInput = document.getElementById('maxDistance');
+
 let imageWidth = 100;
 let imageHeight = 100;
 
@@ -85,6 +87,14 @@ traceButton.addEventListener('click', () => {
   }
 });
 
+maxDistanceInput.addEventListener('input', (e) => {
+  const maxDistance = parseFloat(maxDistanceInput.value);
+  if (!isNaN(maxDistance) && maxDistance > 0) {
+    allVertices = fillEmptySpaces(vertexCount);
+    drawAllVertices();
+  }
+});
+
 function traceOutline(vertexCount) {
   const src = cv.imread(canvas);
   const gray = new cv.Mat();
@@ -94,11 +104,12 @@ function traceOutline(vertexCount) {
 
   const contours = new cv.MatVector();
   const hierarchy = new cv.Mat();
+  console.log('CV:', cv);
   cv.findContours(
     edges,
     contours,
     hierarchy,
-    cv.RETR_EXTERNAL,
+    cv.RETR_TREE,
     cv.CHAIN_APPROX_SIMPLE
   );
 
@@ -113,20 +124,78 @@ function traceOutline(vertexCount) {
     }
   }
 
-  allVertices = sortVerticesClockwise(allVertices);
+  allVertices = fillEmptySpaces(allVertices, 10);
+  // allVertices = addInterpolatedVertices(allVertices);
 
-  equallyDistantVertices = transformVertices(allVertices);
+  // equallyDistantVertices = scaleAndTransformVertices(
+  //   allVertices,
+  //   canvas.width,
+  //   canvas.height,
+  //   widthInput.value,
+  //   heightInput.value,
+  //   vertexCountInput.value
+  // );
 
-  console.log('equallyDistantVertices:', equallyDistantVertices);
+  // console.log('equallyDistantVertices:', equallyDistantVertices);
 
   drawAllVertices();
-  drawSrgbCanvas();
+  // drawSrgbCanvas();
 
   src.delete();
   gray.delete();
   edges.delete();
   contours.delete();
   hierarchy.delete();
+}
+
+// function addInterpolatedVertices(vertices) {
+//   let augmentedVertices = [...vertices];
+//   for (let i = 0; i < vertices.length - 1; i++) {
+//     let current = vertices[i];
+//     let next = vertices[i + 1];
+//     let distance = Math.hypot(next.x - current.x, next.y - current.y);
+//     let additionalPoints = Math.floor(distance / 10);
+//     for (let j = 1; j < additionalPoints; j++) {
+//       augmentedVertices.push({
+//         x: current.x + (j * (next.x - current.x)) / additionalPoints,
+//         y: current.y + (j * (next.y - current.y)) / additionalPoints,
+//       });
+//     }
+//   }
+//   return augmentedVertices;
+// }
+
+function fillEmptySpaces(vertices, maxDistance) {
+  let filledVertices = [];
+
+  // Iterate through existing vertices
+  for (let i = 0; i < vertices.length; i++) {
+    filledVertices.push(vertices[i]); // Add existing vertex
+
+    // Calculate distance to the next vertex (looping around)
+    let nextIndex = (i + 1) % vertices.length;
+    let dx = vertices[nextIndex].x - vertices[i].x;
+    let dy = vertices[nextIndex].y - vertices[i].y;
+    let distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Calculate how many vertices to interpolate
+    let numVertices = Math.ceil(distance / maxDistance);
+    if (numVertices > 1) {
+      // Interpolate vertices
+      let stepX = dx / numVertices;
+      let stepY = dy / numVertices;
+      for (let j = 1; j < numVertices; j++) {
+        let interpolatedX = vertices[i].x + j * stepX;
+        let interpolatedY = vertices[i].y + j * stepY;
+        filledVertices.push({
+          x: Math.round(interpolatedX),
+          y: Math.round(interpolatedY),
+        });
+      }
+    }
+  }
+
+  return filledVertices;
 }
 
 function transformVertices(vertices) {
@@ -268,15 +337,13 @@ function drawSrgbCanvas() {
 
   context.clearRect(0, 0, canvas3.width, canvas3.height);
 
-  let index = 0;
   for (let y = 0; y < srgbGrid.length; y++) {
     for (let x = 0; x < srgbGrid[0].length; x++) {
-      index++;
       const drawAtX = LED_SIZE * x;
       const drawAtY = LED_SIZE * y;
 
       const shouldFill = equallyDistantVertices.find(
-        (vertex) => vertex.x == x && vertex.y == y
+        (vertex) => parseInt(vertex.x) == x && parseInt(vertex.y) == y
       );
 
       context.beginPath();
@@ -291,8 +358,6 @@ function drawSrgbCanvas() {
       context.closePath();
     }
   }
-
-  console.log('End Index:', index);
 }
 
 function calculateAspectRatio(width, height) {
@@ -307,4 +372,143 @@ function calculateAspectRatio(width, height) {
   const aspectWidth = width / gcdValue;
   const aspectHeight = height / gcdValue;
   return { aspectWidth, aspectHeight };
+}
+
+function scaleVertices(vertices, targetWidth, targetHeight, targetCount) {
+  // Step 1: Normalize the vertices to fit within the targetWidth and targetHeight
+  const minX = Math.min(...vertices.map((v) => v.x));
+  const minY = Math.min(...vertices.map((v) => v.y));
+  const maxX = Math.max(...vertices.map((v) => v.x));
+  const maxY = Math.max(...vertices.map((v) => v.y));
+
+  const scaleX = targetWidth / (maxX - minX);
+  const scaleY = targetHeight / (maxY - minY);
+  const scale = Math.min(scaleX, scaleY);
+
+  const normalizedVertices = vertices.map((v) => ({
+    x: (v.x - minX) * scale,
+    y: (v.y - minY) * scale,
+  }));
+
+  // Step 2: Reduce the number of vertices to the targetCount
+  const totalLength = calculatePerimeter(normalizedVertices);
+  const segmentLength = totalLength / targetCount;
+
+  const scaledVertices = [];
+  let currentIndex = 0;
+  let accumulatedLength = 0;
+
+  scaledVertices.push(normalizedVertices[0]);
+
+  while (scaledVertices.length < targetCount) {
+    let nextIndex = (currentIndex + 1) % normalizedVertices.length;
+    let dx =
+      normalizedVertices[nextIndex].x - normalizedVertices[currentIndex].x;
+    let dy =
+      normalizedVertices[nextIndex].y - normalizedVertices[currentIndex].y;
+    let distance = Math.sqrt(dx * dx + dy * dy);
+
+    while (accumulatedLength + distance < segmentLength) {
+      accumulatedLength += distance;
+      currentIndex = nextIndex;
+      nextIndex = (currentIndex + 1) % normalizedVertices.length;
+      dx = normalizedVertices[nextIndex].x - normalizedVertices[currentIndex].x;
+      dy = normalizedVertices[nextIndex].y - normalizedVertices[currentIndex].y;
+      distance = Math.sqrt(dx * dx + dy * dy);
+    }
+
+    const remainingLength = segmentLength - accumulatedLength;
+    const ratio = remainingLength / distance;
+    const x = normalizedVertices[currentIndex].x + ratio * dx;
+    const y = normalizedVertices[currentIndex].y + ratio * dy;
+
+    scaledVertices.push({ x, y });
+    accumulatedLength = 0;
+    currentIndex = nextIndex;
+  }
+
+  return scaledVertices;
+}
+
+function scaleAndTransformVertices(
+  vertices,
+  widthX,
+  heightX,
+  widthY,
+  heightY,
+  numberOfVertices
+) {
+  // Step 1: Calculate the centroid (center of mass) of the shape
+  let centroidX = 0,
+    centroidY = 0;
+  for (let i = 0; i < vertices.length; i++) {
+    centroidX += vertices[i].x;
+    centroidY += vertices[i].y;
+  }
+  centroidX /= vertices.length;
+  centroidY /= vertices.length;
+
+  // Step 2: Calculate angles from centroid to each vertex and sort vertices clockwise
+  vertices.sort((a, b) => {
+    let angleA = Math.atan2(a.y - centroidY, a.x - centroidX);
+    let angleB = Math.atan2(b.y - centroidY, b.x - centroidX);
+    return angleA - angleB;
+  });
+
+  // Step 3: Resample vertices to have numberOfVertices equidistant points
+  let resampledVertices = [];
+  const circumference = Math.PI * (widthX + heightX); // rough approximation
+  const step = circumference / numberOfVertices;
+
+  for (let i = 0; i < numberOfVertices; i++) {
+    let point = interpolate(vertices, i * step);
+    resampledVertices.push({
+      x: Math.round((point.x * widthY) / widthX),
+      y: Math.round((point.y * heightY) / heightX),
+    });
+  }
+
+  return resampledVertices;
+}
+
+// Helper function to interpolate points along the shape
+function interpolate(vertices, distance) {
+  let length = 0;
+  for (let i = 1; i < vertices.length; i++) {
+    length += Math.sqrt(
+      Math.pow(vertices[i].x - vertices[i - 1].x, 2) +
+        Math.pow(vertices[i].y - vertices[i - 1].y, 2)
+    );
+  }
+
+  let accumulatedLength = 0;
+  for (let i = 1; i < vertices.length; i++) {
+    let segmentLength = Math.sqrt(
+      Math.pow(vertices[i].x - vertices[i - 1].x, 2) +
+        Math.pow(vertices[i].y - vertices[i - 1].y, 2)
+    );
+    if (accumulatedLength + segmentLength >= distance) {
+      let ratio = (distance - accumulatedLength) / segmentLength;
+      return {
+        x: vertices[i - 1].x + ratio * (vertices[i].x - vertices[i - 1].x),
+        y: vertices[i - 1].y + ratio * (vertices[i].y - vertices[i - 1].y),
+      };
+    }
+    accumulatedLength += segmentLength;
+  }
+
+  return vertices[vertices.length - 1];
+}
+
+function calculatePerimeter(vertices) {
+  let totalLength = 0;
+  for (let i = 1; i < vertices.length; i++) {
+    const dx = vertices[i].x - vertices[i - 1].x;
+    const dy = vertices[i].y - vertices[i - 1].y;
+    totalLength += Math.sqrt(dx * dx + dy * dy);
+  }
+  const dx = vertices[0].x - vertices[vertices.length - 1].x;
+  const dy = vertices[0].y - vertices[vertices.length - 1].y;
+  totalLength += Math.sqrt(dx * dx + dy * dy);
+  return totalLength;
 }
